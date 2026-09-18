@@ -2,4 +2,5 @@
 /dist
 /presets
 *.png
+!/packaging/icon.iconset/*.png
 .DS_Store
