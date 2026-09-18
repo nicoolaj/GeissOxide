@@ -1,5 +1,5 @@
 _version: 1
-app.about: "GeissOxide, MilkDrop, Chladni and Tonnetz audio visualizers. Captures the sound card (internal loopback or external input)."
+app.about: "GeissOxide, MilkDrop, Chladni, Tonnetz and Ferrofluid audio visualizers. Captures the sound card (internal loopback or external input)."
 app.help_keys: |
   Keys: Esc quit | F fullscreen | Tab switch engine | Space/Right next preset, map or figure
         Left previous preset | L lock preset | D next input device | +/- gain | H this help
@@ -10,7 +10,7 @@ cli.presets: "Directory of MilkDrop .milk presets"
 cli.res: "Internal render resolution, WIDTHxHEIGHT"
 cli.fullscreen: "Start in fullscreen"
 cli.gain: "Input gain multiplier"
-cli.preset_duration: "Seconds before switching MilkDrop preset, Chladni figure or Tonnetz palette"
+cli.preset_duration: "Seconds before switching MilkDrop preset, or figure/palette in the other engines"
 cli.allow_shader_presets: "Also load MilkDrop 2 presets that need pixel shaders (rendered without them)"
 cli.input: "Audio source: 'device' (default) or 'test' (built-in synthetic signal)"
 cli.frames: "Render this many frames then exit (with --screenshot)"

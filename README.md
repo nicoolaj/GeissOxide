@@ -14,6 +14,8 @@ Audio visualizers for the desktop, in pure Rust:
   Euler's Tonnetz (right = fifth, up-right = major third), where every major triad is an
   up-pointing triangle and every minor triad a down-pointing one. Chords fill their triangle, the
   camera follows the key and the progression leaves a fading path.
+- **Ferrofluid** — a Swift–Hohenberg pattern-forming field driven by the bass, lit as black liquid
+  metal: hexagonal spikes surge out of the pool on every kick and sink back in silence.
 
 The sound comes from the sound card: an **external** input (microphone, line-in, USB interface)
 or the **internal** loopback of what the computer is playing. Linux amd64 and macOS (universal).
@@ -31,7 +33,7 @@ Building from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Run
 
 ```text
-geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz] [--device NAME|INDEX] [--list-devices] [--presets DIR]
+geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz|ferrofluid] [--device NAME|INDEX] [--list-devices] [--presets DIR]
       [--res WxH] [--fullscreen] [--gain F] [--preset-duration S] [--allow-shader-presets]
       [--input device|test] [--frames N --screenshot out.png]
 ```

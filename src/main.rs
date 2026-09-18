@@ -4,6 +4,7 @@
 
 mod audio;
 mod chladni;
+mod ferrofluid;
 mod geissoxide;
 mod gpu;
 mod i18n;
@@ -33,6 +34,7 @@ enum EngineKind {
     Milkdrop,
     Chladni,
     Tonnetz,
+    Ferrofluid,
 }
 
 /// The original CPU engines: same lifecycle, rendered through `Gpu::blit_rgba`.
@@ -57,7 +59,7 @@ macro_rules! cpu_engine {
         }
     )*};
 }
-cpu_engine!(chladni::Chladni, tonnetz::Tonnetz);
+cpu_engine!(chladni::Chladni, tonnetz::Tonnetz, ferrofluid::Ferrofluid);
 
 impl EngineKind {
     /// Builds the CPU engine for this kind, `None` for the two ports.
@@ -72,6 +74,7 @@ impl EngineKind {
             Self::GeissOxide | Self::Milkdrop => return None,
             Self::Chladni => Box::new(chladni::Chladni::new(w, h, rate, duration)),
             Self::Tonnetz => Box::new(tonnetz::Tonnetz::new(w, h, rate, duration)),
+            Self::Ferrofluid => Box::new(ferrofluid::Ferrofluid::new(w, h, rate, duration)),
         })
     }
 
