@@ -30,7 +30,7 @@ geissoxide [--engine geissoxide|milkdrop] [--device NAME|INDEX] [--list-devices]
 ```
 
 Keys: `Esc` quit · `F` fullscreen · `Tab` switch engine · `Space`/`→` next preset or map ·
-`←` previous preset · `L` lock preset · `+`/`-` gain · `H` help.
+`←` previous preset · `L` lock preset · `D` next input device · `+`/`-` gain · `H` help.
 
 `--input test` renders from a built-in synthetic signal; with `--frames N --screenshot FILE` it
 saves the last frame and exits, which is handy for checking a machine without a sound source.
@@ -38,6 +38,8 @@ saves the last frame and exits, which is handy for checking a machine without a 
 ## Choosing the audio source
 
 `geissoxide --list-devices` prints the inputs; pick one with `--device` (index or part of the name).
+On macOS, launching `GeissOxide.app` from the Finder shows a native list of the inputs instead; the
+last choice is preselected next time. `D` switches to the next input while running.
 
 **macOS, system audio (internal):** macOS has no loopback input, so install a virtual device such as
 [BlackHole](https://github.com/ExistentialAudio/BlackHole) (`brew install --cask blackhole-2ch`).

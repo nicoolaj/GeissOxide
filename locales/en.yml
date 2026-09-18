@@ -2,7 +2,7 @@ _version: 1
 app.about: "GeissOxide and MilkDrop audio visualizers. Captures the sound card (internal loopback or external input)."
 app.help_keys: |
   Keys: Esc quit | F fullscreen | Tab switch engine | Space/Right next preset or map
-        Left previous preset | L lock preset | +/- gain | H this help
+        Left previous preset | L lock preset | D next input device | +/- gain | H this help
 cli.engine: "Visualizer engine to start with"
 cli.device: "Audio input device (name or index, see --list-devices)"
 cli.list_devices: "List audio input devices and exit"
@@ -20,6 +20,10 @@ audio.no_devices: "No audio input device found"
 audio.device_not_found: "Audio input device not found: %{name}"
 audio.using_device: "Capturing from: %{name} (%{rate} Hz, %{channels} ch)"
 audio.stream_error: "Audio stream error: %{error}"
+audio.pick_prompt: "Audio input to visualize:"
+audio.pick_ok: "Start"
+audio.pick_cancel: "Quit"
+audio.switch_error: "Cannot switch device: %{error}"
 audio.gain: "Gain: %{gain}"
 milkdrop.no_presets: "No usable .milk preset found in %{dir}; run 'make presets'"
 milkdrop.loaded: "Preset: %{name}"

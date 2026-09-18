@@ -2,6 +2,7 @@
 //! built-in synthetic signal (`--input test`) so rendering can be checked without a sound card.
 
 use std::collections::VecDeque;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -21,6 +22,8 @@ pub struct Capture {
     pub rate: u32,
     /// Multiplier applied to every returned sample.
     pub gain: f32,
+    /// Device name (`"test"` for the synthetic source).
+    pub name: String,
     test: Option<Instant>,
 }
 
@@ -70,11 +73,12 @@ impl Capture {
             other => Err(anyhow!("unsupported sample format {other:?}")),
         }?;
         stream.play()?;
+        let name = device_name(&device)?;
         eprintln!(
             "{}",
             t!(
                 "audio.using_device",
-                name = device_name(&device)?,
+                name = name,
                 rate = rate,
                 channels = channels
             )
@@ -84,6 +88,7 @@ impl Capture {
             ring,
             rate,
             gain,
+            name,
             test: None,
         })
     }
@@ -95,6 +100,7 @@ impl Capture {
             ring: Arc::new(Mutex::new(VecDeque::new())),
             rate: 44_100,
             gain,
+            name: "test".to_owned(),
             test: Some(Instant::now()),
         }
     }
@@ -173,6 +179,91 @@ fn test_signal(t: f64) -> f64 {
     kick * 0.8 + 0.15 * (TAU * sweep_hz * t).sin()
 }
 
+/// File remembering the last chosen device name (one line).
+fn choice_file() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let dir = if cfg!(target_os = "macos") {
+        PathBuf::from(home).join("Library/Application Support/GeissOxide")
+    } else {
+        std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(home).join(".config"))
+            .join("geissoxide")
+    };
+    Some(dir.join("device"))
+}
+
+/// Remembers `name` for the next launch; failures are silently ignored.
+pub fn remember(name: &str) {
+    if let Some(path) = choice_file() {
+        let _ = path.parent().map(std::fs::create_dir_all);
+        let _ = std::fs::write(path, name);
+    }
+}
+
+fn remembered() -> Option<String> {
+    std::fs::read_to_string(choice_file()?)
+        .ok()
+        .map(|s| s.trim().to_owned())
+}
+
+/// Index of the device after `current` in `names`, wrapping around (0 when `current` is unknown).
+fn next_index(names: &[String], current: &str) -> usize {
+    names
+        .iter()
+        .position(|n| n == current)
+        .map_or(0, |i| (i + 1) % names.len())
+}
+
+/// The selector (index) of the input device after `current`, cyclically.
+pub fn next_device(current: &str) -> Result<String> {
+    let names: Vec<String> = Capture::list()?.into_iter().map(|(n, _)| n).collect();
+    if names.is_empty() {
+        return Err(anyhow!(t!("audio.no_devices")));
+    }
+    Ok(next_index(&names, current).to_string())
+}
+
+/// Quotes `s` as an AppleScript string literal.
+#[cfg(target_os = "macos")]
+fn applescript_str(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Native macOS list dialog to pick an input device. Returns the selector (index) of the chosen
+/// device, or `None` when the user cancels. The choice is remembered and preselected next time.
+#[cfg(target_os = "macos")]
+pub fn pick_device() -> Result<Option<String>> {
+    let devices = Capture::list()?;
+    if devices.is_empty() {
+        return Err(anyhow!(t!("audio.no_devices")));
+    }
+    let preselected = remembered()
+        .filter(|r| devices.iter().any(|(n, _)| n == r))
+        .or_else(|| devices.iter().find(|(_, d)| *d).map(|(n, _)| n.clone()))
+        .unwrap_or_default();
+    let items: Vec<String> = devices.iter().map(|(n, _)| applescript_str(n)).collect();
+    let script = format!(
+        "choose from list {{{}}} with title \"GeissOxide\" with prompt {} default items {{{}}} \
+         OK button name {} cancel button name {}",
+        items.join(","),
+        applescript_str(&t!("audio.pick_prompt")),
+        applescript_str(&preselected),
+        applescript_str(&t!("audio.pick_ok")),
+        applescript_str(&t!("audio.pick_cancel")),
+    );
+    let out = std::process::Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .context("osascript")?;
+    let chosen = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+    let Some(index) = devices.iter().position(|(n, _)| *n == chosen) else {
+        return Ok(None);
+    };
+    remember(&chosen);
+    Ok(Some(index.to_string()))
+}
+
 /// Prints the device list to stdout.
 pub fn print_devices() -> Result<()> {
     let devices = Capture::list().context(t!("audio.no_devices"))?;
@@ -194,6 +285,20 @@ mod tests {
             .fold(0.0, f64::max);
         assert!(peak <= 1.0 && peak > 0.5, "peak {peak}");
         assert!(test_signal(0.002).abs() > test_signal(0.45).abs());
+    }
+
+    #[test]
+    fn next_index_wraps_and_defaults_to_first() {
+        let names = ["a".to_owned(), "b".to_owned()];
+        assert_eq!(next_index(&names, "a"), 1);
+        assert_eq!(next_index(&names, "b"), 0);
+        assert_eq!(next_index(&names, "zzz"), 0);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn applescript_str_escapes_quotes_and_backslashes() {
+        assert_eq!(applescript_str(r#"a"b\c"#), r#""a\"b\\c""#);
     }
 
     #[test]

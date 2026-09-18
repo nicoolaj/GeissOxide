@@ -10,6 +10,7 @@ mod milkdrop;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -83,6 +84,10 @@ fn resolve_presets(given: &Path) -> PathBuf {
         .unwrap_or_else(|| given.to_path_buf())
 }
 
+fn window_title(device: &str) -> String {
+    format!("GeissOxide \u{2014} {device}")
+}
+
 fn parse_res(s: &str) -> Result<(u32, u32), String> {
     let (w, h) = s
         .split_once('x')
@@ -98,9 +103,21 @@ fn main() -> Result<()> {
     if cli.list_devices {
         return audio::print_devices();
     }
+    let device = match cli.device.clone() {
+        Some(d) => Some(d),
+        // Launched from the Finder (no terminal): ask with a native dialog.
+        #[cfg(target_os = "macos")]
+        None if cli.input == InputKind::Device && !std::io::stdin().is_terminal() => {
+            match audio::pick_device()? {
+                Some(d) => Some(d),
+                None => return Ok(()),
+            }
+        }
+        None => None,
+    };
     let capture = match cli.input {
         InputKind::Test => audio::Capture::test(cli.gain),
-        InputKind::Device => audio::Capture::open(cli.device.as_deref(), cli.gain)?,
+        InputKind::Device => audio::Capture::open(device.as_deref(), cli.gain)?,
     };
     let geissoxide = geissoxide::GeissOxide::new(cli.res.0 as usize, cli.res.1 as usize);
     let event_loop = EventLoop::new()?;
@@ -191,7 +208,7 @@ impl ApplicationHandler for App {
             return;
         }
         let attrs = Window::default_attributes()
-            .with_title("GeissOxide")
+            .with_title(window_title(&self.capture.name))
             .with_window_icon(gpu::window_icon().ok())
             .with_inner_size(winit::dpi::LogicalSize::new(1280, 720))
             .with_fullscreen(self.cli.fullscreen.then_some(Fullscreen::Borderless(None)));
@@ -283,6 +300,19 @@ impl App {
                 if let Some(md) = self.milkdrop.as_mut() {
                     md.locked = !md.locked;
                     eprintln!("{}", t!("milkdrop.locked", state = md.locked));
+                }
+            }
+            Key::Character(c) if c.eq_ignore_ascii_case("d") => {
+                match audio::next_device(&self.capture.name)
+                    .and_then(|sel| audio::Capture::open(Some(&sel), self.cli.gain))
+                {
+                    Ok(capture) => {
+                        self.capture = capture;
+                        self.milkdrop = None; // holds the sample rate; rebuilt on next frame
+                        audio::remember(&self.capture.name);
+                        window.set_title(&window_title(&self.capture.name));
+                    }
+                    Err(e) => eprintln!("{}", t!("audio.switch_error", error = e)),
                 }
             }
             Key::Character(c) if c.eq_ignore_ascii_case("h") => {

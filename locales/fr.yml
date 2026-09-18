@@ -2,7 +2,7 @@ _version: 1
 app.about: "Visualiseurs audio GeissOxide et MilkDrop. Capture la carte son (boucle interne ou entrée externe)."
 app.help_keys: |
   Touches : Échap quitter | F plein écran | Tab changer de moteur | Espace/Droite preset ou map suivant
-            Gauche preset précédent | L verrouiller le preset | +/- gain | H cette aide
+            Gauche preset précédent | L verrouiller le preset | D entrée audio suivante | +/- gain | H cette aide
 cli.engine: "Moteur de visualisation au démarrage"
 cli.device: "Périphérique d'entrée audio (nom ou index, voir --list-devices)"
 cli.list_devices: "Liste les périphériques d'entrée audio et quitte"
@@ -20,6 +20,10 @@ audio.no_devices: "Aucun périphérique d'entrée audio trouvé"
 audio.device_not_found: "Périphérique d'entrée audio introuvable : %{name}"
 audio.using_device: "Capture depuis : %{name} (%{rate} Hz, %{channels} canaux)"
 audio.stream_error: "Erreur du flux audio : %{error}"
+audio.pick_prompt: "Entrée audio à visualiser :"
+audio.pick_ok: "Démarrer"
+audio.pick_cancel: "Quitter"
+audio.switch_error: "Changement de périphérique impossible : %{error}"
 audio.gain: "Gain : %{gain}"
 milkdrop.no_presets: "Aucun preset .milk utilisable dans %{dir} ; lancez 'make presets'"
 milkdrop.loaded: "Preset : %{name}"
