@@ -11,6 +11,7 @@ mod gpu;
 mod i18n;
 mod milkdrop;
 mod pool;
+mod stage;
 mod tonnetz;
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -40,6 +41,7 @@ enum EngineKind {
     Tonnetz,
     Ferrofluid,
     Pool,
+    Stage,
 }
 
 impl EngineKind {
@@ -57,6 +59,7 @@ impl EngineKind {
             Self::Tonnetz => Box::new(tonnetz::Tonnetz::new(w, h, rate, duration)),
             Self::Ferrofluid => Box::new(ferrofluid::Ferrofluid::new(w, h, rate, duration)),
             Self::Pool => Box::new(pool::Pool::new(w, h, rate, duration)),
+            Self::Stage => Box::new(stage::Stage::new(w, h, rate, duration)),
         })
     }
 

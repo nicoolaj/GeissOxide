@@ -27,6 +27,11 @@ pub fn log_bands<const N: usize>() -> [(usize, usize); N] {
     bands
 }
 
+/// MilkDrop's equaliser gain on spectrum bin `i` (`freq` is the raw magnitude times this).
+pub fn equalize_gain(i: usize) -> f32 {
+    -0.02 * ((SAMPLES - i) as f32 / SAMPLES as f32).ln()
+}
+
 /// Per-frame audio features.
 pub struct Audio {
     fft: Arc<dyn Fft<f32>>,
@@ -57,7 +62,7 @@ impl Audio {
             (bin(20.0), bin(320.0), bin(2800.0), bin(11025.0));
         let mut equalize = [0.0; SAMPLES];
         for (i, e) in equalize.iter_mut().enumerate() {
-            *e = -0.02 * ((SAMPLES - i) as f32 / SAMPLES as f32).ln();
+            *e = equalize_gain(i);
         }
         Self {
             fft: FftPlanner::new().plan_fft_forward(FFT_SIZE),
