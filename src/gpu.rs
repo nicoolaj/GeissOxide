@@ -34,8 +34,11 @@ pub struct Gpu {
     pub config: wgpu::SurfaceConfiguration,
     blit_layout: wgpu::BindGroupLayout,
     blit_pipeline: wgpu::RenderPipeline,
+    /// Same shader, alpha-blended over what is already drawn.
+    overlay_pipeline: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     blit_texture: Option<(wgpu::Texture, wgpu::BindGroup)>,
+    overlay_texture: Option<(wgpu::Texture, wgpu::BindGroup)>,
 }
 
 impl Gpu {
@@ -87,27 +90,14 @@ impl Gpu {
             bind_group_layouts: &[Some(&blit_layout)],
             immediate_size: 0,
         });
-        let blit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("blit"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(config.format.into())],
-            }),
-            primitive: Default::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let blit_pipeline = pipeline(&device, &pipeline_layout, &shader, config.format, None);
+        let overlay_pipeline = pipeline(
+            &device,
+            &pipeline_layout,
+            &shader,
+            config.format,
+            Some(wgpu::BlendState::ALPHA_BLENDING),
+        );
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
@@ -120,8 +110,10 @@ impl Gpu {
             config,
             blit_layout,
             blit_pipeline,
+            overlay_pipeline,
             sampler,
             blit_texture: None,
+            overlay_texture: None,
         })
     }
 
@@ -156,30 +148,57 @@ impl Gpu {
 
     /// Uploads an RGBA8 image and draws it centred on `view`, letterboxed to keep its aspect.
     pub fn blit_rgba(&mut self, width: u32, height: u32, rgba: &[u8], view: &wgpu::TextureView) {
-        let needs_new = self
-            .blit_texture
-            .as_ref()
-            .is_none_or(|(t, _)| t.width() != width || t.height() != height);
-        if needs_new {
-            let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("blit source"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            let bind_group = self.bind_texture(&texture);
-            self.blit_texture = Some((texture, bind_group));
-        }
-        let Some((texture, bind_group)) = &self.blit_texture else {
-            return;
+        let taken = self.blit_texture.take();
+        let slot = self.upload_rgba(taken, width, height, rgba);
+        self.blit(&slot.1, (width, height), view);
+        self.blit_texture = Some(slot);
+    }
+
+    /// Uploads an RGBA8 image and alpha-blends it, unscaled and centred, over `view`.
+    pub fn overlay_rgba(&mut self, width: u32, height: u32, rgba: &[u8], view: &wgpu::TextureView) {
+        let taken = self.overlay_texture.take();
+        let slot = self.upload_rgba(taken, width, height, rgba);
+        let (ow, oh) = (self.config.width as f32, self.config.height as f32);
+        let (w, h) = ((width as f32).min(ow), (height as f32).min(oh));
+        let rect = ((ow - w) * 0.5, (oh - h) * 0.5, w, h);
+        self.draw(
+            &self.overlay_pipeline,
+            &slot.1,
+            rect,
+            wgpu::LoadOp::Load,
+            view,
+        );
+        self.overlay_texture = Some(slot);
+    }
+
+    /// Writes `rgba` into `slot`, recreated when its size differs.
+    fn upload_rgba(
+        &self,
+        slot: Option<(wgpu::Texture, wgpu::BindGroup)>,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) -> (wgpu::Texture, wgpu::BindGroup) {
+        let (texture, bind_group) = match slot {
+            Some(s) if s.0.width() == width && s.0.height() == height => s,
+            _ => {
+                let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("blit source"),
+                    size: wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                let bind_group = self.bind_texture(&texture);
+                (texture, bind_group)
+            }
         };
         self.queue.write_texture(
             texture.as_image_copy(),
@@ -191,11 +210,25 @@ impl Gpu {
             },
             texture.size(),
         );
-        self.blit(bind_group, (width, height), view);
+        (texture, bind_group)
     }
 
     /// Draws a bound texture of size `size` centred on `view`, letterboxed to keep its aspect.
     pub fn blit(&self, bind_group: &wgpu::BindGroup, size: (u32, u32), view: &wgpu::TextureView) {
+        let rect = letterbox(self.config.width, self.config.height, size.0, size.1);
+        let load = wgpu::LoadOp::Clear(wgpu::Color::BLACK);
+        self.draw(&self.blit_pipeline, bind_group, rect, load, view);
+    }
+
+    /// One full-quad draw of `bind_group` into the viewport `rect` of `view`.
+    fn draw(
+        &self,
+        pipeline: &wgpu::RenderPipeline,
+        bind_group: &wgpu::BindGroup,
+        rect: (f32, f32, f32, f32),
+        load: wgpu::LoadOp<wgpu::Color>,
+        view: &wgpu::TextureView,
+    ) {
         let mut encoder = self.device.create_command_encoder(&Default::default());
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -205,15 +238,15 @@ impl Gpu {
                     depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 ..Default::default()
             });
-            let (x, y, w, h) = letterbox(self.config.width, self.config.height, size.0, size.1);
+            let (x, y, w, h) = rect;
             pass.set_viewport(x, y, w, h, 0.0, 1.0);
-            pass.set_pipeline(&self.blit_pipeline);
+            pass.set_pipeline(pipeline);
             pass.set_bind_group(0, bind_group, &[]);
             pass.draw(0..3, 0..1);
         }
@@ -286,6 +319,41 @@ impl Gpu {
             wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb
         )
     }
+}
+
+/// The blit pipeline, opaque or blended with `blend`.
+fn pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::PipelineLayout,
+    shader: &wgpu::ShaderModule,
+    format: wgpu::TextureFormat,
+    blend: Option<wgpu::BlendState>,
+) -> wgpu::RenderPipeline {
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("blit"),
+        layout: Some(layout),
+        vertex: wgpu::VertexState {
+            module: shader,
+            entry_point: Some("vs_main"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: shader,
+            entry_point: Some("fs_main"),
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: Default::default(),
+        depth_stencil: None,
+        multisample: Default::default(),
+        multiview_mask: None,
+        cache: None,
+    })
 }
 
 /// Largest rectangle of aspect `iw:ih` centred inside `ow×oh`, as `(x, y, w, h)`.

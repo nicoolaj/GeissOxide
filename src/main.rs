@@ -9,6 +9,7 @@ mod engine;
 mod ferrofluid;
 mod geissoxide;
 mod gpu;
+mod help;
 mod i18n;
 mod instruments;
 mod milkdrop;
@@ -181,6 +182,7 @@ fn main() -> Result<()> {
         window: None,
         gpu: None,
         frame: 0,
+        help: None,
         error: None,
     };
     event_loop.run_app(&mut app)?;
@@ -199,6 +201,8 @@ struct App {
     window: Option<Arc<Window>>,
     gpu: Option<gpu::Gpu>,
     frame: u64,
+    /// On-screen help: `(scale, width, height, rgba)` while shown, rebuilt when `scale` changes.
+    help: Option<(u32, u32, u32, Vec<u8>)>,
     error: Option<anyhow::Error>,
 }
 
@@ -249,6 +253,14 @@ impl App {
                 let rgba = engine.step(&pcm).to_vec();
                 gpu.blit_rgba(w, h, &rgba, &view);
             }
+        }
+        if let Some((scale, pw, ph, rgba)) = self.help.as_mut() {
+            let wanted = (gpu.config.height / 360).max(1);
+            if *scale != wanted {
+                (*pw, *ph, *rgba) = help::panel(&t!("app.help_keys"), wanted);
+                *scale = wanted;
+            }
+            gpu.overlay_rgba(*pw, *ph, rgba, &view);
         }
         self.frame += 1;
         if self.cli.frames.is_some_and(|n| self.frame >= n) {
@@ -384,7 +396,8 @@ impl App {
                 }
             }
             Key::Character(c) if c.eq_ignore_ascii_case("h") => {
-                eprintln!("{}", t!("app.help_keys"))
+                eprintln!("{}", t!("app.help_keys"));
+                self.help = self.help.is_none().then_some((0, 0, 0, Vec::new()));
             }
             _ => {}
         }
