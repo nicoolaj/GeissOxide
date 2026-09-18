@@ -9,6 +9,7 @@ mod ferrofluid;
 mod geissoxide;
 mod gpu;
 mod i18n;
+mod instruments;
 mod milkdrop;
 mod pool;
 mod stage;
@@ -42,6 +43,7 @@ enum EngineKind {
     Ferrofluid,
     Pool,
     Stage,
+    Instruments,
 }
 
 impl EngineKind {
@@ -60,6 +62,7 @@ impl EngineKind {
             Self::Ferrofluid => Box::new(ferrofluid::Ferrofluid::new(w, h, rate, duration)),
             Self::Pool => Box::new(pool::Pool::new(w, h, rate, duration)),
             Self::Stage => Box::new(stage::Stage::new(w, h, rate, duration)),
+            Self::Instruments => Box::new(instruments::Instruments::new(w, h, rate, duration)),
         })
     }
 

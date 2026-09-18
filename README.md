@@ -22,6 +22,9 @@ Audio visualizers for the desktop, in pure Rust:
 - **Stage** — the mix pulled apart into instrument families with spectral heuristics (kick, snare,
   hi-hats, bass, lead, pads), each an actor with its own spot on a stage: a drum ring, a particle
   burst, sparkles, a floor wave, a bobbing light that follows the melody and a background wash.
+- **Instruments** — the sound plays drawn instruments: six strings ring as damped modes plucked by
+  their band's energy jumps, a drum skin (a damped membrane) is struck by the beat and by mid-band
+  onsets, and twelve organ pipes light up with the treble, an air column flickering up each one.
 
 The sound comes from the sound card: an **external** input (microphone, line-in, USB interface)
 or the **internal** loopback of what the computer is playing. Linux amd64 and macOS (universal).
@@ -39,7 +42,7 @@ Building from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Run
 
 ```text
-geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz|ferrofluid|pool|stage] [--device NAME|INDEX] [--list-devices] [--presets DIR]
+geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz|ferrofluid|pool|stage|instruments] [--device NAME|INDEX] [--list-devices] [--presets DIR]
       [--res WxH] [--fullscreen] [--gain F] [--preset-duration S] [--allow-shader-presets]
       [--input device|test] [--frames N --screenshot out.png]
 ```

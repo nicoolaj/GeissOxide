@@ -42,7 +42,7 @@ const FULL: f32 = 2.0;
 /// Lowest long-term average a band is measured against (its noise floor), in mean magnitude per
 /// bin where a full-scale sine reads 1; and the sum of band means below which the stage is silent.
 /// ponytail: fixed thresholds; raise them for a noisy mic.
-const FLOOR: f32 = 1e-3;
+const FLOOR: f32 = 1e-2;
 const SILENCE: f32 = 2e-3;
 /// Fraction of the trail kept per frame.
 const DECAY: f32 = 0.88;

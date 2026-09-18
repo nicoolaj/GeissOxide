@@ -1,5 +1,5 @@
 _version: 1
-app.about: "Visualiseurs audio GeissOxide, MilkDrop, Chladni, Tonnetz, Ferrofluid, Pool et Stage. Capture la carte son (boucle interne ou entrée externe)."
+app.about: "Visualiseurs audio GeissOxide, MilkDrop, Chladni, Tonnetz, Ferrofluid, Pool, Stage et Instruments. Capture la carte son (boucle interne ou entrée externe)."
 app.help_keys: |
   Touches : Échap quitter | F plein écran | Tab changer de moteur | Espace/Droite preset, map ou figure suivant
             Gauche preset précédent | L verrouiller le preset | D entrée audio suivante | +/- gain | H cette aide

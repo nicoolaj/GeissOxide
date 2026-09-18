@@ -1,5 +1,5 @@
 _version: 1
-app.about: "GeissOxide, MilkDrop, Chladni, Tonnetz, Ferrofluid, Pool and Stage audio visualizers. Captures the sound card (internal loopback or external input)."
+app.about: "GeissOxide, MilkDrop, Chladni, Tonnetz, Ferrofluid, Pool, Stage and Instruments audio visualizers. Captures the sound card (internal loopback or external input)."
 app.help_keys: |
   Keys: Esc quit | F fullscreen | Tab switch engine | Space/Right next preset, map or figure
         Left previous preset | L lock preset | D next input device | +/- gain | H this help
