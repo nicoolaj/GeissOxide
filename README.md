@@ -10,6 +10,10 @@ Audio visualizers for the desktop, in pure Rust:
 - **Chladni** — an original cymatics engine: the spectrum drives the standing-wave modes of a
   vibrating plate and sand grains gather on its nodal lines, drawing Chladni figures that re-form
   with the music; beats knock the plate and scatter the sand.
+- **Tonnetz** — harmony made visible: the sound is folded into the 12 pitch classes and drawn on
+  Euler's Tonnetz (right = fifth, up-right = major third), where every major triad is an
+  up-pointing triangle and every minor triad a down-pointing one. Chords fill their triangle, the
+  camera follows the key and the progression leaves a fading path.
 
 The sound comes from the sound card: an **external** input (microphone, line-in, USB interface)
 or the **internal** loopback of what the computer is playing. Linux amd64 and macOS (universal).
@@ -27,7 +31,7 @@ Building from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Run
 
 ```text
-geissoxide [--engine geissoxide|milkdrop|chladni] [--device NAME|INDEX] [--list-devices] [--presets DIR]
+geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz] [--device NAME|INDEX] [--list-devices] [--presets DIR]
       [--res WxH] [--fullscreen] [--gain F] [--preset-duration S] [--allow-shader-presets]
       [--input device|test] [--frames N --screenshot out.png]
 ```

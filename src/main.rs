@@ -1,4 +1,4 @@
-//! GeissOxide, MilkDrop & Chladni audio visualizers — window, CLI and frame loop.
+//! GeissOxide, MilkDrop and the original CPU engines — window, CLI and frame loop.
 
 #![forbid(unsafe_code)]
 
@@ -8,6 +8,7 @@ mod geissoxide;
 mod gpu;
 mod i18n;
 mod milkdrop;
+mod tonnetz;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
@@ -31,6 +32,55 @@ enum EngineKind {
     GeissOxide,
     Milkdrop,
     Chladni,
+    Tonnetz,
+}
+
+/// The original CPU engines: same lifecycle, rendered through `Gpu::blit_rgba`.
+trait CpuEngine {
+    fn frames_needed(&self) -> usize;
+    fn step(&mut self, pcm: &[f32]) -> &[u8];
+    fn next(&mut self);
+}
+
+macro_rules! cpu_engine {
+    ($($ty:ty),*) => {$(
+        impl CpuEngine for $ty {
+            fn frames_needed(&self) -> usize {
+                self.frames_needed()
+            }
+            fn step(&mut self, pcm: &[f32]) -> &[u8] {
+                self.step(pcm)
+            }
+            fn next(&mut self) {
+                self.next()
+            }
+        }
+    )*};
+}
+cpu_engine!(chladni::Chladni, tonnetz::Tonnetz);
+
+impl EngineKind {
+    /// Builds the CPU engine for this kind, `None` for the two ports.
+    fn cpu_engine(
+        self,
+        w: usize,
+        h: usize,
+        rate: u32,
+        duration: f32,
+    ) -> Option<Box<dyn CpuEngine>> {
+        Some(match self {
+            Self::GeissOxide | Self::Milkdrop => return None,
+            Self::Chladni => Box::new(chladni::Chladni::new(w, h, rate, duration)),
+            Self::Tonnetz => Box::new(tonnetz::Tonnetz::new(w, h, rate, duration)),
+        })
+    }
+
+    /// The kind after this one (`Tab`).
+    fn following(self) -> Self {
+        let all = Self::value_variants();
+        let i = all.iter().position(|&k| k == self).unwrap_or(0);
+        all[(i + 1) % all.len()]
+    }
 }
 
 /// Where audio comes from.
@@ -130,7 +180,7 @@ fn main() -> Result<()> {
         engine,
         geissoxide,
         milkdrop: None,
-        chladni: None,
+        cpu: None,
         window: None,
         gpu: None,
         frame: 0,
@@ -147,7 +197,8 @@ struct App {
     engine: EngineKind,
     geissoxide: geissoxide::GeissOxide,
     milkdrop: Option<milkdrop::MilkDrop>,
-    chladni: Option<chladni::Chladni>,
+    /// The running CPU engine, if the current kind is one.
+    cpu: Option<(EngineKind, Box<dyn CpuEngine>)>,
     window: Option<Arc<Window>>,
     gpu: Option<gpu::Gpu>,
     frame: u64,
@@ -186,17 +237,19 @@ impl App {
                 let pcm = self.capture.latest(md.frames_needed());
                 md.render(gpu, &pcm, &view);
             }
-            EngineKind::Chladni => {
-                let ch = self.chladni.get_or_insert_with(|| {
-                    chladni::Chladni::new(
-                        w as usize,
-                        h as usize,
-                        self.capture.rate,
-                        self.cli.preset_duration,
-                    )
-                });
-                let pcm = self.capture.latest(ch.frames_needed());
-                let rgba = ch.step(&pcm).to_vec();
+            kind => {
+                let (rate, duration) = (self.capture.rate, self.cli.preset_duration);
+                let engine = match &mut self.cpu {
+                    Some((k, e)) if *k == kind => e,
+                    slot => {
+                        let e = kind
+                            .cpu_engine(w as usize, h as usize, rate, duration)
+                            .ok_or_else(|| anyhow::anyhow!("{kind:?} has no CPU engine"))?;
+                        &mut slot.insert((kind, e)).1
+                    }
+                };
+                let pcm = self.capture.latest(engine.frames_needed());
+                let rgba = engine.step(&pcm).to_vec();
                 gpu.blit_rgba(w, h, &rgba, &view);
             }
         }
@@ -293,21 +346,18 @@ impl App {
                 window.set_fullscreen(next);
             }
             Key::Named(NamedKey::Tab) => {
-                self.engine = match self.engine {
-                    EngineKind::GeissOxide => EngineKind::Milkdrop,
-                    EngineKind::Milkdrop => EngineKind::Chladni,
-                    EngineKind::Chladni => EngineKind::GeissOxide,
-                };
+                self.engine = self.engine.following();
                 eprintln!(
                     "{}",
                     t!("engine.switched", name = format!("{:?}", self.engine))
                 );
             }
             Key::Named(NamedKey::Space | NamedKey::ArrowRight) => {
-                match (self.engine, self.milkdrop.as_mut(), self.chladni.as_mut()) {
+                match (self.engine, self.milkdrop.as_mut(), self.cpu.as_mut()) {
                     (EngineKind::Milkdrop, Some(md), _) => md.next_preset(),
-                    (EngineKind::Chladni, _, Some(ch)) => ch.next(),
-                    _ => self.geissoxide.next_map(),
+                    (EngineKind::GeissOxide, ..) => self.geissoxide.next_map(),
+                    (_, _, Some((_, e))) => e.next(),
+                    _ => {}
                 }
             }
             Key::Named(NamedKey::ArrowLeft) => {
@@ -329,7 +379,7 @@ impl App {
                         self.capture = capture;
                         // Both hold the sample rate; rebuilt on next frame.
                         self.milkdrop = None;
-                        self.chladni = None;
+                        self.cpu = None;
                         audio::remember(&self.capture.name);
                         window.set_title(&window_title(&self.capture.name));
                     }

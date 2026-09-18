@@ -1,5 +1,5 @@
 _version: 1
-app.about: "Visualiseurs audio GeissOxide, MilkDrop et Chladni. Capture la carte son (boucle interne ou entrée externe)."
+app.about: "Visualiseurs audio GeissOxide, MilkDrop, Chladni et Tonnetz. Capture la carte son (boucle interne ou entrée externe)."
 app.help_keys: |
   Touches : Échap quitter | F plein écran | Tab changer de moteur | Espace/Droite preset, map ou figure suivant
             Gauche preset précédent | L verrouiller le preset | D entrée audio suivante | +/- gain | H cette aide
@@ -10,7 +10,7 @@ cli.presets: "Répertoire des presets MilkDrop .milk"
 cli.res: "Résolution de rendu interne, LARGEURxHAUTEUR"
 cli.fullscreen: "Démarre en plein écran"
 cli.gain: "Multiplicateur de gain d'entrée"
-cli.preset_duration: "Secondes avant de changer de preset MilkDrop ou de figure Chladni"
+cli.preset_duration: "Secondes avant de changer de preset MilkDrop, de figure Chladni ou de palette Tonnetz"
 cli.allow_shader_presets: "Charge aussi les presets MilkDrop 2 à shaders (rendus sans)"
 cli.input: "Source audio : 'device' (défaut) ou 'test' (signal synthétique intégré)"
 cli.frames: "Rend ce nombre d'images puis quitte (avec --screenshot)"
