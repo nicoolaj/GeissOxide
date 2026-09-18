@@ -91,8 +91,8 @@ impl Tonnetz {
         let window = (0..FFT)
             .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / FFT as f32).cos())
             .collect();
-        let pal_warm = warm_palette(&mut rng, true);
-        let pal_cool = warm_palette(&mut rng, false);
+        let pal_warm = palette::random_tinted(&mut rng, true);
+        let pal_cool = palette::random_tinted(&mut rng, false);
         Self {
             width,
             height,
@@ -172,8 +172,8 @@ impl Tonnetz {
         self.since_switch = 0.0;
         self.from = (self.pal_warm, self.pal_cool);
         self.to = (
-            warm_palette(&mut self.rng, true),
-            warm_palette(&mut self.rng, false),
+            palette::random_tinted(&mut self.rng, true),
+            palette::random_tinted(&mut self.rng, false),
         );
         self.blends_left = palette::BLEND_FRAMES;
     }
@@ -386,18 +386,6 @@ impl Tonnetz {
             }
         }
     }
-}
-
-/// A random Geiss palette whose bright end is red-dominant (`warm`) or blue-dominant.
-fn warm_palette(rng: &mut rand::rngs::ThreadRng, warm: bool) -> Palette {
-    for _ in 0..50 {
-        let pal = palette::random(rng, false);
-        let [r, _, b] = pal[200];
-        if (r > b) == warm {
-            return pal;
-        }
-    }
-    palette::random(rng, false)
 }
 
 /// Brightens the pixels of the segment `a`→`b` to at least `c` (Bresenham).

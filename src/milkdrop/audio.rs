@@ -11,6 +11,22 @@ pub const FFT_SIZE: usize = 1024;
 /// Waveform / spectrum samples exposed to presets.
 pub const SAMPLES: usize = 512;
 
+/// `N` log-spaced bin ranges over bins `1..=SAMPLES/2` (up to ~11 kHz), each at least one bin
+/// wide, for the original engines.
+pub fn log_bands<const N: usize>() -> [(usize, usize); N] {
+    let mut bands = [(0, 0); N];
+    let mut lo = 1;
+    for (k, band) in bands.iter_mut().enumerate() {
+        let hi = ((SAMPLES / 2) as f32)
+            .powf((k + 1) as f32 / N as f32)
+            .round() as usize;
+        let hi = hi.max(lo + 1);
+        *band = (lo, hi);
+        lo = hi;
+    }
+    bands
+}
+
 /// Per-frame audio features.
 pub struct Audio {
     fft: Arc<dyn Fft<f32>>,

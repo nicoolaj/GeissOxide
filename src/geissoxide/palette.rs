@@ -74,6 +74,19 @@ pub fn random(rng: &mut impl Rng, silent: bool) -> Palette {
     pal
 }
 
+/// A random palette whose bright end is red-dominant (`warm`) or blue-dominant (used by the
+/// original engines to tell two layers apart).
+pub fn random_tinted(rng: &mut impl Rng, warm: bool) -> Palette {
+    for _ in 0..50 {
+        let pal = random(rng, false);
+        let [r, g, b] = pal[200];
+        if if warm { r > g && r > b } else { b > r && b > g } {
+            return pal;
+        }
+    }
+    random(rng, false)
+}
+
 /// Linear blend between two palettes, `t` in `0.0..=1.0` (`PutPalette`).
 pub fn blend(from: &Palette, to: &Palette, t: f32) -> Palette {
     let mut out = [[0u8; 3]; 256];

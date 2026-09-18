@@ -8,7 +8,7 @@ use rand::RngExt;
 
 use crate::geissoxide::palette::{self, Palette};
 use crate::geissoxide::raster::Canvas;
-use crate::milkdrop::audio::{Audio, FFT_SIZE, SAMPLES};
+use crate::milkdrop::audio::{Audio, FFT_SIZE, log_bands};
 
 /// Spectrum bands, each driving one plate mode.
 const BANDS: usize = 24;
@@ -78,17 +78,7 @@ impl Chladni {
     /// mode assignment and palette every `duration` seconds.
     pub fn new(width: usize, height: usize, sample_rate: u32, duration: f32) -> Self {
         let mut rng = rand::rng();
-        // Log-spaced bands over bins 1..=SAMPLES/2 (up to ~11 kHz), each at least one bin wide.
-        let mut bands = [(0, 0); BANDS];
-        let mut lo = 1;
-        for (k, band) in bands.iter_mut().enumerate() {
-            let hi = ((SAMPLES / 2) as f32)
-                .powf((k + 1) as f32 / BANDS as f32)
-                .round() as usize;
-            let hi = hi.max(lo + 1);
-            *band = (lo, hi);
-            lo = hi;
-        }
+        let bands = log_bands::<BANDS>();
         let palette = palette::random(&mut rng, false);
         let grains = (0..GRAINS)
             .map(|_| Grain {
