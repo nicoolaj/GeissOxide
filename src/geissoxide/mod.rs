@@ -3,8 +3,8 @@
 
 mod effects;
 mod map;
-mod palette;
-mod raster;
+pub mod palette;
+pub mod raster;
 mod sound;
 mod warp;
 mod wave;

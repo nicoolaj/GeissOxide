@@ -7,6 +7,9 @@ Audio visualizers for the desktop, in pure Rust:
   waveforms, beat-driven scene changes.
 - **MilkDrop** — a MilkDrop 1 compatible engine (`.milk` presets, NS-EEL scripts, custom waves
   and shapes, motion vectors, video echo). MilkDrop 2 pixel-shader presets are skipped by default.
+- **Chladni** — an original cymatics engine: the spectrum drives the standing-wave modes of a
+  vibrating plate and sand grains gather on its nodal lines, drawing Chladni figures that re-form
+  with the music; beats knock the plate and scatter the sand.
 
 The sound comes from the sound card: an **external** input (microphone, line-in, USB interface)
 or the **internal** loopback of what the computer is playing. Linux amd64 and macOS (universal).
@@ -24,12 +27,12 @@ Building from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Run
 
 ```text
-geissoxide [--engine geissoxide|milkdrop] [--device NAME|INDEX] [--list-devices] [--presets DIR]
+geissoxide [--engine geissoxide|milkdrop|chladni] [--device NAME|INDEX] [--list-devices] [--presets DIR]
       [--res WxH] [--fullscreen] [--gain F] [--preset-duration S] [--allow-shader-presets]
       [--input device|test] [--frames N --screenshot out.png]
 ```
 
-Keys: `Esc` quit · `F` fullscreen · `Tab` switch engine · `Space`/`→` next preset or map ·
+Keys: `Esc` quit · `F` fullscreen · `Tab` switch engine · `Space`/`→` next preset, map or figure ·
 `←` previous preset · `L` lock preset · `D` next input device · `+`/`-` gain · `H` help.
 
 `--input test` renders from a built-in synthetic signal; with `--frames N --screenshot FILE` it

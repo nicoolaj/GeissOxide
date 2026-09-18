@@ -1,8 +1,9 @@
-//! GeissOxide & MilkDrop audio visualizers — window, CLI and frame loop.
+//! GeissOxide, MilkDrop & Chladni audio visualizers — window, CLI and frame loop.
 
 #![forbid(unsafe_code)]
 
 mod audio;
+mod chladni;
 mod geissoxide;
 mod gpu;
 mod i18n;
@@ -29,6 +30,7 @@ enum EngineKind {
     #[value(name = "geissoxide")]
     GeissOxide,
     Milkdrop,
+    Chladni,
 }
 
 /// Where audio comes from.
@@ -128,6 +130,7 @@ fn main() -> Result<()> {
         engine,
         geissoxide,
         milkdrop: None,
+        chladni: None,
         window: None,
         gpu: None,
         frame: 0,
@@ -144,6 +147,7 @@ struct App {
     engine: EngineKind,
     geissoxide: geissoxide::GeissOxide,
     milkdrop: Option<milkdrop::MilkDrop>,
+    chladni: Option<chladni::Chladni>,
     window: Option<Arc<Window>>,
     gpu: Option<gpu::Gpu>,
     frame: u64,
@@ -181,6 +185,19 @@ impl App {
                 };
                 let pcm = self.capture.latest(md.frames_needed());
                 md.render(gpu, &pcm, &view);
+            }
+            EngineKind::Chladni => {
+                let ch = self.chladni.get_or_insert_with(|| {
+                    chladni::Chladni::new(
+                        w as usize,
+                        h as usize,
+                        self.capture.rate,
+                        self.cli.preset_duration,
+                    )
+                });
+                let pcm = self.capture.latest(ch.frames_needed());
+                let rgba = ch.step(&pcm).to_vec();
+                gpu.blit_rgba(w, h, &rgba, &view);
             }
         }
         self.frame += 1;
@@ -278,7 +295,8 @@ impl App {
             Key::Named(NamedKey::Tab) => {
                 self.engine = match self.engine {
                     EngineKind::GeissOxide => EngineKind::Milkdrop,
-                    EngineKind::Milkdrop => EngineKind::GeissOxide,
+                    EngineKind::Milkdrop => EngineKind::Chladni,
+                    EngineKind::Chladni => EngineKind::GeissOxide,
                 };
                 eprintln!(
                     "{}",
@@ -286,8 +304,9 @@ impl App {
                 );
             }
             Key::Named(NamedKey::Space | NamedKey::ArrowRight) => {
-                match (self.engine, self.milkdrop.as_mut()) {
-                    (EngineKind::Milkdrop, Some(md)) => md.next_preset(),
+                match (self.engine, self.milkdrop.as_mut(), self.chladni.as_mut()) {
+                    (EngineKind::Milkdrop, Some(md), _) => md.next_preset(),
+                    (EngineKind::Chladni, _, Some(ch)) => ch.next(),
                     _ => self.geissoxide.next_map(),
                 }
             }
@@ -308,7 +327,9 @@ impl App {
                 {
                     Ok(capture) => {
                         self.capture = capture;
-                        self.milkdrop = None; // holds the sample rate; rebuilt on next frame
+                        // Both hold the sample rate; rebuilt on next frame.
+                        self.milkdrop = None;
+                        self.chladni = None;
                         audio::remember(&self.capture.name);
                         window.set_title(&window_title(&self.capture.name));
                     }
