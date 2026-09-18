@@ -12,6 +12,7 @@ mod i18n;
 mod instruments;
 mod milkdrop;
 mod pool;
+mod rack;
 mod stage;
 mod tonnetz;
 
@@ -44,6 +45,7 @@ enum EngineKind {
     Pool,
     Stage,
     Instruments,
+    Rack,
 }
 
 impl EngineKind {
@@ -63,6 +65,7 @@ impl EngineKind {
             Self::Pool => Box::new(pool::Pool::new(w, h, rate, duration)),
             Self::Stage => Box::new(stage::Stage::new(w, h, rate, duration)),
             Self::Instruments => Box::new(instruments::Instruments::new(w, h, rate, duration)),
+            Self::Rack => Box::new(rack::Rack::new(w, h, rate, duration)),
         })
     }
 
