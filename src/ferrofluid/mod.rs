@@ -6,11 +6,10 @@
 //! spike spacing is ~2π cells (so `q ≈ 1` and the flat mode stays damped) and is upsampled for
 //! lighting. Original design, no source port.
 
-use std::time::Instant;
-
 use rand::RngExt;
 
-use crate::geissoxide::palette::{self, Palette};
+use crate::engine::{Clock, CpuEngine};
+use crate::geissoxide::palette::{self, Fade};
 use crate::milkdrop::audio::{Audio, FFT_SIZE, SAMPLES};
 
 /// Screen pixels per simulation cell.
@@ -30,9 +29,6 @@ const Q_FINE: f32 = 1.2;
 const SILENCE: f32 = 0.5;
 /// Height exaggeration for the lighting normals (gradient per cell).
 const RELIEF: f32 = 1.5;
-/// Beat when the bass jumps this much over its smoothed level; seconds between kicks.
-const BEAT: f32 = 1.4;
-const BEAT_HOLD: f32 = 0.25;
 
 /// A running Ferrofluid visualizer.
 pub struct Ferrofluid {
@@ -55,17 +51,9 @@ pub struct Ferrofluid {
     q_scale: f32,
     /// Light azimuth.
     theta: f32,
-    palette: Palette,
-    palette_from: Palette,
-    palette_to: Palette,
-    blends_left: u32,
+    palette: Fade,
     rng: rand::rngs::ThreadRng,
-    frame: u64,
-    fps: f32,
-    last_frame: Instant,
-    since_beat: f32,
-    since_switch: f32,
-    duration: f32,
+    clock: Clock,
     rgba: Vec<u8>,
 }
 
@@ -94,47 +82,27 @@ impl Ferrofluid {
             boost: 0.0,
             q_scale: 1.0,
             theta: 0.0,
-            palette,
-            palette_from: palette,
-            palette_to: palette,
-            blends_left: 0,
+            palette: Fade::new(palette),
             rng,
-            frame: 0,
-            fps: 60.0,
-            last_frame: Instant::now(),
-            since_beat: 0.0,
-            since_switch: 0.0,
-            duration,
+            clock: Clock::new(duration),
             rgba: vec![255; width * height * 4],
         }
     }
+}
 
-    /// Stereo frames `step` wants per call.
-    pub fn frames_needed(&self) -> usize {
+impl CpuEngine for Ferrofluid {
+    fn frames_needed(&self) -> usize {
         FFT_SIZE
     }
 
-    /// Renders one frame from the latest interleaved stereo `pcm`; returns RGBA8 pixels.
-    pub fn step(&mut self, pcm: &[f32]) -> &[u8] {
-        let now = Instant::now();
-        let dt = now
-            .duration_since(self.last_frame)
-            .as_secs_f32()
-            .clamp(1.0 / 240.0, 0.5);
-        self.last_frame = now;
-        self.fps = self.fps * 0.95 + (1.0 / dt) * 0.05;
-        self.frame += 1;
-        self.since_beat += dt;
-        self.since_switch += dt;
-        if self.since_switch >= self.duration {
+    fn step(&mut self, pcm: &[f32]) -> &[u8] {
+        if self.clock.tick() {
             self.next();
         }
-        self.audio.update(pcm, self.fps, self.frame);
+        self.audio.update(pcm, self.clock.fps, self.clock.frame);
 
-        let fps = self.fps.clamp(15.0, 144.0);
-        let rate = |r: f32| r.powf(30.0 / fps);
         let level = self.audio.level[0].min(4.0);
-        let r = rate(if level > self.bass { 0.3 } else { 0.9 });
+        let r = self.clock.rate(if level > self.bass { 0.3 } else { 0.9 });
         self.bass = self.bass * r + level * (1.0 - r);
         let (mut num, mut den) = (0.0, 0.0);
         for i in 1..SAMPLES {
@@ -143,20 +111,18 @@ impl Ferrofluid {
             den += e;
         }
         if den > 0.0 {
-            let r = rate(0.95);
+            let r = self.clock.rate(0.95);
             self.centroid = self.centroid * r + (num / den) * (1.0 - r);
         }
         let rms = (self.audio.time[0].iter().map(|s| s * s).sum::<f32>() / SAMPLES as f32).sqrt();
         let silent = rms < SILENCE;
-        let beat = self.since_beat >= BEAT_HOLD && self.audio.level[0] > BEAT * self.audio.att[0];
-        if beat && !silent {
-            self.since_beat = 0.0;
+        if self.clock.beat(&self.audio) && !silent {
             self.boost = 0.6;
             for x in &mut self.u {
                 *x += self.rng.random_range(-0.15..0.15);
             }
         }
-        self.boost *= rate(0.9);
+        self.boost *= self.clock.rate(0.9);
         let eps = if silent {
             -0.6
         } else {
@@ -167,20 +133,20 @@ impl Ferrofluid {
         for _ in 0..SUBSTEPS {
             self.substep(eps, q2);
         }
-        self.theta += 0.004 * 60.0 / fps;
+        self.theta += 0.004 * 60.0 / self.clock.fps.clamp(15.0, 144.0);
         self.draw();
         &self.rgba
     }
 
-    /// New palette and spike spacing right away (key binding).
-    pub fn next(&mut self) {
-        self.since_switch = 0.0;
-        self.palette_from = self.palette;
-        self.palette_to = palette::random(&mut self.rng, false);
-        self.blends_left = palette::BLEND_FRAMES;
+    /// New palette and spike spacing.
+    fn next(&mut self) {
+        self.clock.reset_switch();
+        self.palette.to(palette::random(&mut self.rng, false));
         self.q_scale = self.rng.random_range(0.85..1.15);
     }
+}
 
+impl Ferrofluid {
     /// Five-point periodic Laplacian of `src` into `dst`.
     fn laplacian(&self, src: &[f32], dst: &mut [f32]) {
         let (w, h) = (self.sw, self.sh);
@@ -254,11 +220,7 @@ impl Ferrofluid {
             normalize([x, y, 0.7])
         };
         let half = normalize([light[0], light[1], light[2] + 1.0]);
-        if self.blends_left > 0 {
-            self.blends_left -= 1;
-            let t = 1.0 - self.blends_left as f32 / palette::BLEND_FRAMES as f32;
-            self.palette = palette::blend(&self.palette_from, &self.palette_to, t);
-        }
+        let palette = *self.palette.tick();
         self.gradient();
         for y in 0..h {
             for x in 0..w {
@@ -270,7 +232,7 @@ impl Ferrofluid {
                     spec *= spec; // ^64
                 }
                 let fresnel = (1.0 - n[2]).powi(3);
-                let sky = self.palette[((n[1] * 0.5 + 0.5) * 255.0) as usize];
+                let sky = palette[((n[1] * 0.5 + 0.5) * 255.0) as usize];
                 let px = &mut self.rgba[(y * w + x) * 4..][..3];
                 for c in 0..3 {
                     let s = f32::from(sky[c]) / 255.0;

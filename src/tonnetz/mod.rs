@@ -5,12 +5,12 @@
 //! and the chords leave a fading path. Original design, no source port.
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 
-use crate::geissoxide::palette::{self, Palette};
+use crate::engine::{Clock, CpuEngine};
+use crate::geissoxide::palette::{self, Fade};
 use crate::geissoxide::raster::Canvas;
 use crate::milkdrop::audio::{Audio, FFT_SIZE};
 
@@ -30,9 +30,6 @@ const SPACING: f32 = 0.22;
 const GLOW_DECAY: f32 = 0.985;
 const PATH_DECAY: f32 = 0.995;
 const TRAIL_DECAY: f32 = 0.75;
-/// Beat when the bass jumps this much over its smoothed level; seconds between kicks.
-const BEAT: f32 = 1.4;
-const BEAT_HOLD: f32 = 0.25;
 /// Camera easing per frame toward the sounding notes.
 const EASE: f32 = 0.02;
 
@@ -57,18 +54,10 @@ pub struct Tonnetz {
     warm: Vec<u8>,
     cool: Vec<u8>,
     path: Vec<u8>,
-    pal_warm: Palette,
-    pal_cool: Palette,
-    from: (Palette, Palette),
-    to: (Palette, Palette),
-    blends_left: u32,
+    warm_pal: Fade,
+    cool_pal: Fade,
     rng: rand::rngs::ThreadRng,
-    frame: u64,
-    fps: f32,
-    last_frame: Instant,
-    since_beat: f32,
-    since_switch: f32,
-    duration: f32,
+    clock: Clock,
     rgba: Vec<u8>,
 }
 
@@ -91,8 +80,6 @@ impl Tonnetz {
         let window = (0..FFT)
             .map(|i| 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / FFT as f32).cos())
             .collect();
-        let pal_warm = palette::random_tinted(&mut rng, true);
-        let pal_cool = palette::random_tinted(&mut rng, false);
         Self {
             width,
             height,
@@ -108,46 +95,27 @@ impl Tonnetz {
             warm: vec![0; width * height],
             cool: vec![0; width * height],
             path: vec![0; width * height],
-            pal_warm,
-            pal_cool,
-            from: (pal_warm, pal_cool),
-            to: (pal_warm, pal_cool),
-            blends_left: 0,
+            warm_pal: Fade::new(palette::random_tinted(&mut rng, true)),
+            cool_pal: Fade::new(palette::random_tinted(&mut rng, false)),
             rng,
-            frame: 0,
-            fps: 60.0,
-            last_frame: Instant::now(),
-            since_beat: 0.0,
-            since_switch: 0.0,
-            duration,
+            clock: Clock::new(duration),
             rgba: vec![255; width * height * 4],
         }
     }
+}
 
-    /// Stereo frames `step` wants per call.
-    pub fn frames_needed(&self) -> usize {
+impl CpuEngine for Tonnetz {
+    fn frames_needed(&self) -> usize {
         FFT
     }
 
-    /// Renders one frame from the latest interleaved stereo `pcm`; returns RGBA8 pixels.
-    pub fn step(&mut self, pcm: &[f32]) -> &[u8] {
-        let now = Instant::now();
-        let dt = now
-            .duration_since(self.last_frame)
-            .as_secs_f32()
-            .clamp(1.0 / 240.0, 0.5);
-        self.last_frame = now;
-        self.fps = self.fps * 0.95 + (1.0 / dt) * 0.05;
-        self.frame += 1;
-        self.since_beat += dt;
-        self.since_switch += dt;
-        if self.since_switch >= self.duration {
+    fn step(&mut self, pcm: &[f32]) -> &[u8] {
+        if self.clock.tick() {
             self.next();
         }
-
         // MilkDrop's analysis only needs the most recent FFT_SIZE frames.
         let recent = &pcm[pcm.len().saturating_sub(FFT_SIZE * 2)..];
-        self.audio.update(recent, self.fps, self.frame);
+        self.audio.update(recent, self.clock.fps, self.clock.frame);
         self.update_chroma(pcm);
         self.move_camera();
 
@@ -155,9 +123,7 @@ impl Tonnetz {
         let zoom = 1.0 + 0.06 * (self.audio.att[0] - 1.0).clamp(-0.5, 1.0);
         let nodes = self.visible_nodes(spacing, zoom);
 
-        let beat = self.since_beat >= BEAT_HOLD && self.audio.level[0] > BEAT * self.audio.att[0];
-        if beat {
-            self.since_beat = 0.0;
+        if self.clock.beat(&self.audio) {
             let root = (0..12).max_by(|&a, &b| self.chroma[a].total_cmp(&self.chroma[b]));
             if let Some(&(x, y, ..)) = root.and_then(|c| nodes.iter().find(|n| n.2 == c)) {
                 self.ring = Some((x, y, 0.0));
@@ -167,17 +133,16 @@ impl Tonnetz {
         &self.rgba
     }
 
-    /// New palettes right away (key binding).
-    pub fn next(&mut self) {
-        self.since_switch = 0.0;
-        self.from = (self.pal_warm, self.pal_cool);
-        self.to = (
-            palette::random_tinted(&mut self.rng, true),
-            palette::random_tinted(&mut self.rng, false),
-        );
-        self.blends_left = palette::BLEND_FRAMES;
+    fn next(&mut self) {
+        self.clock.reset_switch();
+        self.warm_pal
+            .to(palette::random_tinted(&mut self.rng, true));
+        self.cool_pal
+            .to(palette::random_tinted(&mut self.rng, false));
     }
+}
 
+impl Tonnetz {
     /// Hann-windowed FFT of the mono signal folded into the 12 pitch classes, normalised to the
     /// loudest class, smoothed with a fast attack and slower release.
     fn update_chroma(&mut self, pcm: &[f32]) {
@@ -197,8 +162,7 @@ impl Tonnetz {
             acc[class] += self.scratch[bin].norm() * weight;
         }
         let peak = acc.iter().cloned().fold(0.0, f32::max);
-        let fps = self.fps.clamp(15.0, 144.0);
-        let rate = |r: f32| r.powf(30.0 / fps);
+        let rate = |r: f32| self.clock.rate(r);
         for (c, &energy) in acc.iter().enumerate() {
             let target = if peak < SILENCE { 0.0 } else { energy / peak };
             let r = rate(if target > self.chroma[c] { 0.4 } else { 0.8 });
@@ -312,13 +276,13 @@ impl Tonnetz {
                     width: w,
                     height: h,
                 };
-                fill_triangle(&mut canvas, [a, b, c], v);
+                canvas.fill_triangle([a, b, c], v);
                 let mut canvas = Canvas {
                     buf: &mut self.path,
                     width: w,
                     height: h,
                 };
-                fill_triangle(&mut canvas, [a, b, c], v / 2);
+                canvas.fill_triangle([a, b, c], v / 2);
             }
             if let Some(d) = at(q + 1, r + 1) {
                 let lit = [lit[1], lit[2], level(Self::class(q + 1, r + 1))];
@@ -329,13 +293,13 @@ impl Tonnetz {
                         width: w,
                         height: h,
                     };
-                    fill_triangle(&mut canvas, [b, c, d], v);
+                    canvas.fill_triangle([b, c, d], v);
                     let mut canvas = Canvas {
                         buf: &mut self.path,
                         width: w,
                         height: h,
                     };
-                    fill_triangle(&mut canvas, [b, c, d], v / 2);
+                    canvas.fill_triangle([b, c, d], v / 2);
                 }
             }
             // Edges between two sounding notes.
@@ -347,12 +311,12 @@ impl Tonnetz {
             for (to, class) in [(b, classes[1]), (c, classes[2])] {
                 let l = lit[0].min(level(class));
                 if l > LIT {
-                    line(&mut canvas, a, to, (l * 200.0) as u8);
+                    canvas.line(a, to, (l * 200.0) as u8);
                 }
             }
             let l = lit[1].min(lit[2]);
             if l > LIT {
-                line(&mut canvas, b, c, (l * 200.0) as u8);
+                canvas.line(b, c, (l * 200.0) as u8);
             }
         }
         let mut canvas = Canvas {
@@ -363,98 +327,23 @@ impl Tonnetz {
         for &(x, y, c, _) in nodes {
             let l = self.chroma[c];
             let radius = 2.0 + 0.04 * spacing * l;
-            disc(&mut canvas, (x, y), radius, 25 + (l * 230.0) as u8);
+            canvas.disc((x, y), radius, 25 + (l * 230.0) as u8);
         }
         if let Some((x, y, r)) = self.ring {
             let fade = 1.0 - r / (w.max(h) as f32);
-            circle(&mut canvas, (x, y), r, (fade * 180.0) as u8);
+            canvas.circle((x, y), r, (fade * 180.0) as u8);
             self.ring = (fade > 0.0).then_some((x, y, r + 6.0));
         }
 
-        if self.blends_left > 0 {
-            self.blends_left -= 1;
-            let t = 1.0 - self.blends_left as f32 / palette::BLEND_FRAMES as f32;
-            self.pal_warm = palette::blend(&self.from.0, &self.to.0, t);
-            self.pal_cool = palette::blend(&self.from.1, &self.to.1, t);
-        }
+        let (warm_pal, cool_pal) = (self.warm_pal.tick(), self.cool_pal.tick());
         for (i, px) in self.rgba.chunks_exact_mut(4).enumerate() {
-            let warm = self.pal_warm[usize::from(self.warm[i])];
-            let cool = self.pal_cool[usize::from(self.cool[i])];
-            let path = self.pal_cool[usize::from(self.path[i])];
+            let warm = warm_pal[usize::from(self.warm[i])];
+            let cool = cool_pal[usize::from(self.cool[i])];
+            let path = cool_pal[usize::from(self.path[i])];
             for c in 0..3 {
                 px[c] = warm[c].saturating_add(cool[c]).saturating_add(path[c] / 2);
             }
         }
-    }
-}
-
-/// Brightens the pixels of the segment `a`→`b` to at least `c` (Bresenham).
-fn line(canvas: &mut Canvas, a: (f32, f32), b: (f32, f32), c: u8) {
-    let (mut x0, mut y0) = (a.0 as i32, a.1 as i32);
-    let (x1, y1) = (b.0 as i32, b.1 as i32);
-    let (dx, dy) = ((x1 - x0).abs(), -(y1 - y0).abs());
-    let (sx, sy) = ((x1 - x0).signum(), (y1 - y0).signum());
-    let mut err = dx + dy;
-    loop {
-        canvas.plot_max(x0, y0, c);
-        if x0 == x1 && y0 == y1 {
-            break;
-        }
-        let e2 = 2 * err;
-        if e2 >= dy {
-            err += dy;
-            x0 += sx;
-        }
-        if e2 <= dx {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-/// Fills the triangle `p` (scanline) with at least `c`.
-fn fill_triangle(canvas: &mut Canvas, mut p: [(f32, f32); 3], c: u8) {
-    p.sort_by(|a, b| a.1.total_cmp(&b.1));
-    let [(x0, y0), (x1, y1), (x2, y2)] = p;
-    let x_at = |ya: f32, xa: f32, yb: f32, xb: f32, y: f32| {
-        if (yb - ya).abs() < 1e-3 {
-            xa
-        } else {
-            xa + (xb - xa) * (y - ya) / (yb - ya)
-        }
-    };
-    for y in (y0.ceil() as i32)..=(y2.floor() as i32) {
-        let yf = y as f32;
-        let xa = x_at(y0, x0, y2, x2, yf);
-        let xb = if yf < y1 {
-            x_at(y0, x0, y1, x1, yf)
-        } else {
-            x_at(y1, x1, y2, x2, yf)
-        };
-        for x in (xa.min(xb).ceil() as i32)..=(xa.max(xb).floor() as i32) {
-            canvas.plot_max(x, y, c);
-        }
-    }
-}
-
-/// Filled disc of radius `r` around `p`.
-fn disc(canvas: &mut Canvas, p: (f32, f32), r: f32, c: u8) {
-    let ri = r.ceil() as i32;
-    for dy in -ri..=ri {
-        for dx in -ri..=ri {
-            if ((dx * dx + dy * dy) as f32) <= r * r {
-                canvas.plot_max(p.0 as i32 + dx, p.1 as i32 + dy, c);
-            }
-        }
-    }
-}
-
-/// Circle outline of radius `r` around `p`.
-fn circle(canvas: &mut Canvas, p: (f32, f32), r: f32, c: u8) {
-    let steps = (r * std::f32::consts::TAU).ceil().max(8.0) as usize;
-    for i in 0..steps {
-        let a = i as f32 / steps as f32 * std::f32::consts::TAU;
-        canvas.plot_max((p.0 + r * a.cos()) as i32, (p.1 + r * a.sin()) as i32, c);
     }
 }
 

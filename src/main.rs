@@ -4,6 +4,7 @@
 
 mod audio;
 mod chladni;
+mod engine;
 mod ferrofluid;
 mod geissoxide;
 mod gpu;
@@ -21,6 +22,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::{Parser, ValueEnum};
+use engine::CpuEngine;
 use rust_i18n::t;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, WindowEvent};
@@ -39,35 +41,6 @@ enum EngineKind {
     Ferrofluid,
     Pool,
 }
-
-/// The original CPU engines: same lifecycle, rendered through `Gpu::blit_rgba`.
-trait CpuEngine {
-    fn frames_needed(&self) -> usize;
-    fn step(&mut self, pcm: &[f32]) -> &[u8];
-    fn next(&mut self);
-}
-
-macro_rules! cpu_engine {
-    ($($ty:ty),*) => {$(
-        impl CpuEngine for $ty {
-            fn frames_needed(&self) -> usize {
-                self.frames_needed()
-            }
-            fn step(&mut self, pcm: &[f32]) -> &[u8] {
-                self.step(pcm)
-            }
-            fn next(&mut self) {
-                self.next()
-            }
-        }
-    )*};
-}
-cpu_engine!(
-    chladni::Chladni,
-    tonnetz::Tonnetz,
-    ferrofluid::Ferrofluid,
-    pool::Pool
-);
 
 impl EngineKind {
     /// Builds the CPU engine for this kind, `None` for the two ports.

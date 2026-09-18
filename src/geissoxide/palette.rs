@@ -98,6 +98,50 @@ pub fn blend(from: &Palette, to: &Palette, t: f32) -> Palette {
     out
 }
 
+/// A palette that blends toward a new one over `BLEND_FRAMES` (`iBlendsLeftInPal`).
+pub struct Fade {
+    current: Palette,
+    from: Palette,
+    to: Palette,
+    left: u32,
+}
+
+impl Fade {
+    /// A fade resting on `palette`.
+    pub fn new(palette: Palette) -> Self {
+        Self {
+            current: palette,
+            from: palette,
+            to: palette,
+            left: 0,
+        }
+    }
+
+    /// Starts blending from the current palette to `palette`.
+    pub fn to(&mut self, palette: Palette) {
+        self.from = self.current;
+        self.to = palette;
+        self.left = BLEND_FRAMES;
+    }
+
+    /// Advances the blend by one frame and returns the palette to draw with.
+    pub fn tick(&mut self) -> &Palette {
+        if self.left > 0 {
+            self.left -= 1;
+            let t = 1.0 - self.left as f32 / BLEND_FRAMES as f32;
+            self.current = blend(&self.from, &self.to, t);
+        }
+        &self.current
+    }
+}
+
+/// Maps an 8-bit index buffer through `pal` into RGBA8 (alpha untouched).
+pub fn apply(pal: &Palette, idx: &[u8], rgba: &mut [u8]) {
+    for (px, &i) in rgba.chunks_exact_mut(4).zip(idx) {
+        px[..3].copy_from_slice(&pal[usize::from(i)]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -113,5 +157,15 @@ mod tests {
         let b = random(&mut rng, true);
         assert_eq!(blend(&a, &b, 0.0), a);
         assert_eq!(blend(&a, &b, 1.0), b);
+        let mut fade = Fade::new(a);
+        fade.to(b);
+        for _ in 0..BLEND_FRAMES {
+            fade.tick();
+        }
+        assert_eq!(*fade.tick(), b);
+        let mut rgba = [255u8; 8];
+        apply(&b, &[0, 200], &mut rgba);
+        assert_eq!(&rgba[4..7], &b[200]);
+        assert_eq!(rgba[7], 255);
     }
 }

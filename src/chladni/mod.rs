@@ -2,11 +2,10 @@
 //! bed of sand grains drifts toward the nodal lines, drawing Chladni figures that re-form as the
 //! music changes. A beat knocks the plate and scatters the sand. Original design, no source port.
 
-use std::time::Instant;
-
 use rand::RngExt;
 
-use crate::geissoxide::palette::{self, Palette};
+use crate::engine::{Clock, CpuEngine};
+use crate::geissoxide::palette::{self, Fade};
 use crate::geissoxide::raster::Canvas;
 use crate::milkdrop::audio::{Audio, FFT_SIZE, log_bands};
 
@@ -22,10 +21,6 @@ const DRAG: f32 = 0.8;
 const MAX_STEP: f32 = 3.0;
 /// Random shake added per frame, in pixels, scaled by the local vibration.
 const JITTER: f32 = 1.5;
-/// Beat when the bass jumps this much over its smoothed level.
-const BEAT: f32 = 1.4;
-/// Seconds between two beat kicks.
-const BEAT_HOLD: f32 = 0.25;
 /// Sum of band levels below which the plate is considered silent.
 /// ponytail: fixed threshold in MilkDrop spectrum units; raise it if a noisy mic keeps the sand shaking.
 const SILENCE: f32 = 2.0;
@@ -59,17 +54,9 @@ pub struct Chladni {
     field: Vec<f32>,
     grains: Vec<Grain>,
     trail: Vec<u8>,
-    palette: Palette,
-    palette_from: Palette,
-    palette_to: Palette,
-    blends_left: u32,
+    palette: Fade,
     rng: rand::rngs::ThreadRng,
-    frame: u64,
-    fps: f32,
-    last_frame: Instant,
-    since_beat: f32,
-    since_switch: f32,
-    duration: f32,
+    clock: Clock,
     rgba: Vec<u8>,
 }
 
@@ -100,50 +87,30 @@ impl Chladni {
             field: vec![0.0; width * height],
             grains,
             trail: vec![0; width * height],
-            palette,
-            palette_from: palette,
-            palette_to: palette,
-            blends_left: 0,
+            palette: Fade::new(palette),
             rng,
-            frame: 0,
-            fps: 60.0,
-            last_frame: Instant::now(),
-            since_beat: 0.0,
-            since_switch: 0.0,
-            duration,
+            clock: Clock::new(duration),
             rgba: vec![255; width * height * 4],
         };
         engine.pick_modes();
         engine
     }
+}
 
-    /// Stereo frames `step` wants per call.
-    pub fn frames_needed(&self) -> usize {
+impl CpuEngine for Chladni {
+    fn frames_needed(&self) -> usize {
         FFT_SIZE
     }
 
-    /// Renders one frame from the latest interleaved stereo `pcm`; returns RGBA8 pixels.
-    pub fn step(&mut self, pcm: &[f32]) -> &[u8] {
-        let now = Instant::now();
-        let dt = now
-            .duration_since(self.last_frame)
-            .as_secs_f32()
-            .clamp(1.0 / 240.0, 0.5);
-        self.last_frame = now;
-        self.fps = self.fps * 0.95 + (1.0 / dt) * 0.05;
-        self.frame += 1;
-        self.since_beat += dt;
-        self.since_switch += dt;
-        if self.since_switch >= self.duration {
+    fn step(&mut self, pcm: &[f32]) -> &[u8] {
+        if self.clock.tick() {
             self.next();
         }
 
-        self.audio.update(pcm, self.fps, self.frame);
+        self.audio.update(pcm, self.clock.fps, self.clock.frame);
         self.update_amplitudes();
         self.compute_field();
-        let beat = self.since_beat >= BEAT_HOLD && self.audio.level[0] > BEAT * self.audio.att[0];
-        if beat {
-            self.since_beat = 0.0;
+        if self.clock.beat(&self.audio) {
             let kick = (2.0 * (self.audio.level[0] - self.audio.att[0])).min(8.0);
             self.kick(kick);
         }
@@ -152,16 +119,16 @@ impl Chladni {
         &self.rgba
     }
 
-    /// New mode assignment and palette right away, with a knock on the plate (key binding).
-    pub fn next(&mut self) {
-        self.since_switch = 0.0;
+    /// New mode assignment and palette, with a knock on the plate.
+    fn next(&mut self) {
+        self.clock.reset_switch();
         self.pick_modes();
-        self.palette_from = self.palette;
-        self.palette_to = palette::random(&mut self.rng, false);
-        self.blends_left = palette::BLEND_FRAMES;
+        self.palette.to(palette::random(&mut self.rng, false));
         self.kick(6.0);
     }
+}
 
+impl Chladni {
     /// Assigns a random `(m, n)` mode to each band, low bands getting the coarse modes, and
     /// rebuilds the separable cosine tables.
     fn pick_modes(&mut self) {
@@ -185,8 +152,7 @@ impl Chladni {
     /// Band energy relative to its own long-term average, squared for contrast, smoothed with a
     /// fast attack and slow release, then normalised so the field stays within `-1..=1`.
     fn update_amplitudes(&mut self) {
-        let fps = self.fps.clamp(15.0, 144.0);
-        let rate = |r: f32| r.powf(30.0 / fps);
+        let rate = |r: f32| self.clock.rate(r);
         let spectrum = |i: usize| 0.5 * (self.audio.freq[0][i] + self.audio.freq[1][i]);
         let mut total = 0.0;
         let mut targets = [0.0; BANDS];
@@ -290,14 +256,7 @@ impl Chladni {
         for g in &self.grains {
             canvas.add(g.x as i32, g.y as i32, GRAIN, 255);
         }
-        if self.blends_left > 0 {
-            self.blends_left -= 1;
-            let t = 1.0 - self.blends_left as f32 / palette::BLEND_FRAMES as f32;
-            self.palette = palette::blend(&self.palette_from, &self.palette_to, t);
-        }
-        for (px, &i) in self.rgba.chunks_exact_mut(4).zip(&self.trail) {
-            px[..3].copy_from_slice(&self.palette[usize::from(i)]);
-        }
+        palette::apply(self.palette.tick(), &self.trail, &mut self.rgba);
     }
 }
 
