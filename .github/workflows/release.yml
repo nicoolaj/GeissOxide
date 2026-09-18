@@ -1,0 +1,70 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  secu:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: make secu
+
+  linux:
+    needs: secu
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+      - run: cargo build --release --target x86_64-unknown-linux-gnu
+      - run: cp target/x86_64-unknown-linux-gnu/release/geissoxide geissoxide-linux-amd64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: geissoxide-linux-amd64
+          path: geissoxide-linux-amd64
+
+  macos:
+    needs: secu
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit,cargo-deny
+      - run: make presets darwin
+      - run: ditto -c -k --keepParent dist/GeissOxide.app GeissOxide-macos-universal.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GeissOxide-macos-universal
+          path: GeissOxide-macos-universal.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, macos]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            geissoxide-linux-amd64/geissoxide-linux-amd64
+            GeissOxide-macos-universal/GeissOxide-macos-universal.zip

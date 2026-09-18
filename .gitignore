@@ -1,0 +1,5 @@
+/target
+/dist
+/presets
+*.png
+.DS_Store

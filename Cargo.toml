@@ -1,0 +1,28 @@
+[package]
+name = "geissoxide"
+version = "1.0.0"
+edition = "2024"
+license = "BSD-3-Clause"
+description = "GeissOxide and MilkDrop audio visualizers, in Rust"
+rust-version = "1.85"
+
+[dependencies]
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"] }
+clap = { version = "4", features = ["derive"] }
+cpal = "0.18"
+env_logger = "0.11"
+log = "0.4"
+png = "0.18"
+pollster = "1"
+rand = "0.10"
+rust-i18n = "4"
+rustfft = "6"
+sys-locale = "0.3"
+wgpu = "30"
+winit = { version = "0.30", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen", "wayland-csd-adwaita-notitle"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
