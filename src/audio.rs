@@ -201,6 +201,8 @@ pub fn remember(name: &str) {
     }
 }
 
+/// The last chosen device name, if any (read by the macOS picker).
+#[cfg(target_os = "macos")]
 fn remembered() -> Option<String> {
     std::fs::read_to_string(choice_file()?)
         .ok()

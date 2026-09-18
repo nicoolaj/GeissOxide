@@ -14,6 +14,7 @@ mod tonnetz;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
+#[cfg(target_os = "macos")]
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
