@@ -4,7 +4,7 @@
 //! stereo field) with a correlation meter under it. Original design, no source port.
 
 use crate::engine::{Clock, CpuEngine};
-use crate::geissoxide::palette::{self, Fade, Palette};
+use crate::geissoxide::palette::{self, Fade};
 use crate::geissoxide::raster::Canvas;
 use crate::milkdrop::audio::{Audio, FFT_SIZE, SAMPLES, equalize_gain, log_bands};
 
@@ -70,21 +70,6 @@ pub struct Rack {
     rgba: Vec<u8>,
 }
 
-/// Black → `tint` → white over the 256 entries.
-fn phosphor(tint: [f32; 3]) -> Palette {
-    std::array::from_fn(|i| {
-        let t = i as f32 / 255.0;
-        tint.map(|c| {
-            let v = if t < 0.6 {
-                c * t / 0.6
-            } else {
-                c + (1.0 - c) * (t - 0.6) / 0.4
-            };
-            (v * 255.0) as u8
-        })
-    })
-}
-
 impl Rack {
     /// Creates an engine rendering at `width`×`height` for audio at `sample_rate`, changing the
     /// screen tint every `duration` seconds.
@@ -114,7 +99,7 @@ impl Rack {
             correlation: 0.0,
             tint: 0,
             trail: vec![0; width * height],
-            palette: Fade::new(phosphor(TINTS[0])),
+            palette: Fade::new(palette::ramp(TINTS[0])),
             clock: Clock::new(duration),
             rgba: vec![255; width * height * 4],
         }
@@ -140,7 +125,7 @@ impl CpuEngine for Rack {
     fn next(&mut self) {
         self.clock.reset_switch();
         self.tint = (self.tint + 1) % TINTS.len();
-        self.palette.to(phosphor(TINTS[self.tint]));
+        self.palette.to(palette::ramp(TINTS[self.tint]));
     }
 }
 

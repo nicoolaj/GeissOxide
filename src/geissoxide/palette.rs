@@ -87,6 +87,21 @@ pub fn random_tinted(rng: &mut impl Rng, warm: bool) -> Palette {
     random(rng, false)
 }
 
+/// Black → `tint` → white over the 256 entries (phosphor screens, neon lines).
+pub fn ramp(tint: [f32; 3]) -> Palette {
+    std::array::from_fn(|i| {
+        let t = i as f32 / 255.0;
+        tint.map(|c| {
+            let v = if t < 0.6 {
+                c * t / 0.6
+            } else {
+                c + (1.0 - c) * (t - 0.6) / 0.4
+            };
+            (v * 255.0) as u8
+        })
+    })
+}
+
 /// Linear blend between two palettes, `t` in `0.0..=1.0` (`PutPalette`).
 pub fn blend(from: &Palette, to: &Palette, t: f32) -> Palette {
     let mut out = [[0u8; 3]; 256];

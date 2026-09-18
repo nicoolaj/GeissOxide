@@ -28,6 +28,10 @@ Audio visualizers for the desktop, in pure Rust:
 - **Rack** — a studio rack of measuring instruments on a phosphor screen: two VU meters with
   ballistic needles and peak LEDs, a triggered oscilloscope, a 31-band spectrum analyser with
   peak-hold marks, and a goniometer with a correlation meter.
+- **Arcade** — a Pac-Man maze in fat pixels ridden by six Tron light cycles, one per spectrum
+  band: each rides at the speed of its band, turns at the next junction on an onset, leaves a
+  fading light wall and eats the pellets it passes; the beat is a power pellet (walls flash,
+  every cycle reverses). Maze and neon palette regenerate once most pellets are eaten.
 
 The sound comes from the sound card: an **external** input (microphone, line-in, USB interface)
 or the **internal** loopback of what the computer is playing. Linux amd64 and macOS (universal).
@@ -45,7 +49,7 @@ Building from source instead? See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Run
 
 ```text
-geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz|ferrofluid|pool|stage|instruments|rack] [--device NAME|INDEX] [--list-devices] [--presets DIR]
+geissoxide [--engine geissoxide|milkdrop|chladni|tonnetz|ferrofluid|pool|stage|instruments|rack|arcade] [--device NAME|INDEX] [--list-devices] [--presets DIR]
       [--res WxH] [--fullscreen] [--gain F] [--preset-duration S] [--allow-shader-presets]
       [--input device|test] [--frames N --screenshot out.png]
 ```

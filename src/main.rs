@@ -2,6 +2,7 @@
 
 #![forbid(unsafe_code)]
 
+mod arcade;
 mod audio;
 mod chladni;
 mod engine;
@@ -46,6 +47,7 @@ enum EngineKind {
     Stage,
     Instruments,
     Rack,
+    Arcade,
 }
 
 impl EngineKind {
@@ -66,6 +68,7 @@ impl EngineKind {
             Self::Stage => Box::new(stage::Stage::new(w, h, rate, duration)),
             Self::Instruments => Box::new(instruments::Instruments::new(w, h, rate, duration)),
             Self::Rack => Box::new(rack::Rack::new(w, h, rate, duration)),
+            Self::Arcade => Box::new(arcade::Arcade::new(w, h, rate, duration)),
         })
     }
 

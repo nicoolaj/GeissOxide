@@ -1,6 +1,6 @@
 [package]
 name = "geissoxide"
-version = "1.8.0"
+version = "1.9.0"
 edition = "2024"
 license = "BSD-3-Clause"
 description = "GeissOxide and MilkDrop audio visualizers, in Rust"
