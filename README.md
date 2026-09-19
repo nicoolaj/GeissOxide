@@ -1,5 +1,8 @@
 # GeissOxide
 
+[![Latest release](https://img.shields.io/github/v/release/nicoolaj/GeissOxide?label=release)](https://github.com/nicoolaj/GeissOxide/releases/latest)
+[![License](https://img.shields.io/github/license/nicoolaj/GeissOxide)](LICENSE)
+
 Audio visualizers for the desktop, in pure Rust:
 
 - **GeissOxide** — a port of Ryan Geiss' 1998-2022 Winamp plug-in / screensaver
